@@ -45,6 +45,40 @@ class RNN(nn.Module):
         prediction = self.out(out)
         return prediction, h
 
+# class RNN(nn.Module):
+#     def __init__(self, input_size=INPUT_SIZE, hidden_size=32, output_size=1):
+#         super(RNN, self).__init__()
+
+#         self.num_layers = 1
+#         self.hidden_size = hidden_size
+
+#         self.u = nn.Linear(input_size, hidden_size)
+#         self.w = nn.Linear(hidden_size, hidden_size)
+#         self.v = nn.Linear(hidden_size, output_size)
+
+#         self.tanh = nn.Tanh()
+#         self.softmax = nn.LogSoftmax(dim=1)
+
+#     def forward(self, inputs, hidden):
+
+#         if hidden is None:
+#             num_directions = 1
+#             hidden = torch.zeros(self.num_layers * num_directions,
+#                                  1, self.hidden_size,
+#                                  dtype=inputs.dtype, device=inputs.device)
+#         u_x = self.u(inputs)
+
+#         hidden = self.w(hidden)
+#         hidden = self.tanh(hidden + u_x)
+
+#         output = self.v(hidden)
+
+#         return output, hidden
+
+#     def initHidden(self):
+#         return torch.zeros(1, self.hidden_size)
+
+
 
 rnn = RNN()
 print(rnn)
@@ -67,6 +101,7 @@ for step in range(N_EPOCHS):
     prediction, h_state = rnn(x, h_state)  # RNN输出（预测结果，隐藏状态）
     h_state = h_state.detach()  # 这一行很重要，将每一次输出的中间状态传递下去(不带梯度)
     loss = criterion(prediction, y)
+    print(loss)
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
