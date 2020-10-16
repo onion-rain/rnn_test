@@ -24,7 +24,7 @@ torch.manual_seed(2019)
 TIME_STEP = 20  # RNN时间步长
 INPUT_SIZE = 1  # RNN输入尺寸
 INIT_LR = 0.02  # 初始学习率
-N_EPOCHS = 200  # 训练回数
+N_EPOCHS = 100  # 训练回数
 
 
 class RNN(nn.Module):
@@ -86,8 +86,10 @@ print(rnn)
 optimizer = torch.optim.Adam(rnn.parameters(), lr=INIT_LR)
 criterion = nn.MSELoss()
 h_state = None  # 初始化隐藏层
+all_losses = []
 
-plt.figure()
+fig_show = plt.figure('fig_show')
+# plt.figure()
 plt.ion()
 for step in range(N_EPOCHS):
     start, end = step * 2*np.pi, (step + 1) * 2*np.pi  # 时间跨度
@@ -106,6 +108,7 @@ for step in range(N_EPOCHS):
     loss.backward()
     optimizer.step()
 
+    all_losses.append(loss)
     # 绘制中间结果
     plt.cla()
     plt.plot(steps, y_np, 'r-')
@@ -113,4 +116,8 @@ for step in range(N_EPOCHS):
     plt.draw()
     plt.pause(0.1)
 plt.ioff()
+# plt.show()
+
+fig_loss = plt.figure('fig_loss')
+plt.plot(all_losses)
 plt.show()
