@@ -55,9 +55,10 @@ class RNN(nn.Module):
 #         self.u = nn.Linear(input_size, hidden_size)
 #         self.w = nn.Linear(hidden_size, hidden_size)
 #         self.v = nn.Linear(hidden_size, output_size)
+        
 
 #         self.tanh = nn.Tanh()
-#         self.softmax = nn.LogSoftmax(dim=1)
+#         # self.softmax = nn.LogSoftmax(dim=1)
 
 #     def forward(self, inputs, hidden):
 

@@ -111,6 +111,7 @@ def get_lr(iter, learning_rate):
     lr_iter = learning_rate if iter < n_iters else learning_rate*0.1
     return lr_iter
 
+
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(RNN, self).__init__()
