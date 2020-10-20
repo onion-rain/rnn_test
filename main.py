@@ -37,7 +37,7 @@ class RNN(nn.Module):
         self.rnn = nn.RNN(
             input_size=input_size,
             hidden_size=hidden_size,  # RNN隐藏神经元个数
-            num_layers=2,  # RNN隐藏层个数
+            num_layers=1,  # RNN隐藏层个数
         )
         self.out = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=1)
@@ -132,11 +132,11 @@ if __name__ == "__main__":
     for step in range(N_EPOCHS):
         random.shuffle(sample_id)
         for man_id in sample_id:
-            h_state = init_data_tensor[man_id]
-            for time_id in range(squeue_data_tensor[id].size(0)):
-                prediction, h_state = rnn_net(squeue_data_tensor[id][time_id], h_state)
+            h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0).unsqueeze(0)
+            # for time_id in range(squeue_data_tensor[id].size(0)):
+            prediction, h_state = rnn_net(squeue_data_tensor[id].unsqueeze(1), h_state)
             
-            h_state = h_state.detach()
+            # h_state = h_state.detach()
             loss = criterion(prediction, label_tensor[man_id])
             print(loss)
             optimizer.zero_grad()
