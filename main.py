@@ -3,6 +3,8 @@ import torch
 from torch import nn
 import random
 import os
+import matplotlib.pyplot as plt
+import numpy as np
 
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
@@ -31,51 +33,49 @@ def load_csv(path):
 #         out = self.linear2(out)
 #         return out
 
-class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(RNN, self).__init__()
-        self.rnn = nn.RNN(
-            input_size=input_size,
-            hidden_size=hidden_size,  # RNN隐藏神经元个数
-            num_layers=1,  # RNN隐藏层个数
-        )
-        self.out = nn.Linear(hidden_size, output_size)
-        self.softmax = nn.LogSoftmax(dim=1)
-
-    def forward(self, x, h):
-        # x (time_step, batch_size, input_size)
-        # h (n_layers, batch, hidden_size)
-        # out (time_step, batch_size, hidden_size)
-        out, h = self.rnn(x, h)
-        prediction = self.softmax(self.out(out))
-        return prediction, h
-
 # class RNN(nn.Module):
 #     def __init__(self, input_size, hidden_size, output_size):
 #         super(RNN, self).__init__()
-
-#         self.hidden_size = hidden_size
-
-#         self.u = nn.Linear(input_size, hidden_size)
-#         self.w = nn.Linear(hidden_size, hidden_size)
-#         self.v = nn.Linear(hidden_size, output_size)
-
-#         self.tanh = nn.Tanh()
+#         self.rnn = nn.RNN(
+#             input_size=input_size,
+#             hidden_size=hidden_size,  # RNN隐藏神经元个数
+#             num_layers=1,  # RNN隐藏层个数
+#         )
+#         self.out = nn.Linear(hidden_size, output_size)
 #         self.softmax = nn.LogSoftmax(dim=1)
 
-#     def forward(self, inputs, hidden):
+#     def forward(self, x, h):
+#         # x (time_step, batch_size, input_size)
+#         # h (n_layers, batch, hidden_size)
+#         # out (time_step, batch_size, hidden_size)
+#         out, h = self.rnn(x, h)
+#         prediction = self.softmax(self.out(out))
+#         return prediction, h
 
-#         u_x = self.u(inputs)
+class RNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(RNN, self).__init__()
 
-#         hidden = self.w(hidden)
-#         hidden = self.tanh(hidden + u_x)
+        self.hidden_size = hidden_size
 
-#         output = self.softmax(self.v(hidden))
+        self.u = nn.Linear(input_size, hidden_size)
+        self.w = nn.Linear(hidden_size, hidden_size)
+        self.v = nn.Linear(hidden_size, output_size)
 
-#         return output, hidden
+        self.tanh = nn.Tanh()
+        self.softmax = nn.LogSoftmax(dim=1)
 
-#     def initHidden(self):
-#         return torch.zeros(1, self.hidden_size)
+    def forward(self, inputs, hidden):
+
+        u_x = self.u(inputs)
+
+        hidden = self.w(hidden)
+        hidden = self.tanh(hidden + u_x)
+
+        output = self.softmax(self.v(hidden))
+
+        return output, hidden
+
 
 
 if __name__ == "__main__":
@@ -105,16 +105,16 @@ if __name__ == "__main__":
         squeue_data_tensor.append(torch.Tensor(l))
 
     # label
-    label_tensor = label
+    # label_tensor = label
     for id in range(len(label)):
-        label_tensor[id-1] = list(map(int, label[id]))
-    label_tensor = torch.Tensor(label_tensor)
+        label[id] = list(map(int, label[id]))[-1:]
+    label_tensor = torch.Tensor(label)
 
     n_input = 66
     n_hidden = 128
     n_output = 2
     N_EPOCHS = 100
-    INIT_LR = 0.02
+    INIT_LR = 1e-6
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -125,22 +125,41 @@ if __name__ == "__main__":
     # rnn_net.to(device)
 
     optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
-    criterion = nn.MSELoss()
+    # criterion = nn.MSELoss()
+    # criterion = nn.NLLLoss()
+    criterion = nn.CrossEntropyLoss()
 
     sample_id = l = list(range(data_num))
+    
+    all_losses = []
+    mean_loss = []
 
     for step in range(N_EPOCHS):
         random.shuffle(sample_id)
         for man_id in sample_id:
-            h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0).unsqueeze(0)
+            h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
+            input = squeue_data_tensor[id].unsqueeze(1)
             # for time_id in range(squeue_data_tensor[id].size(0)):
-            prediction, h_state = rnn_net(squeue_data_tensor[id].unsqueeze(1), h_state)
-            
-            # h_state = h_state.detach()
-            loss = criterion(prediction, label_tensor[man_id])
+            for i in range(input.size()[0]):
+                output, h_state = rnn_net(input[i], h_state)
+            # output = prediction[-1, :]
+            target = label_tensor[man_id][-1:].long()
+            loss = criterion(output, target)
             print(loss)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
+            
+            if len(all_losses) < 1000:
+                all_losses.append(loss.data)
+            else:
+                mean_loss.append(np.mean(all_losses))
+                all_losses = []
+                fig_loss = plt.figure('fig_loss')
+                plt.ion()
+                plt.plot(mean_loss)
+                plt.draw()
+                plt.pause(0.1)
 
         torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "rnn_state_dict.pkl"))
+    
