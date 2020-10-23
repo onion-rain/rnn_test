@@ -31,48 +31,49 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #         out = self.linear2(out)
 #         return out
 
-# class RNN(nn.Module):
-#     def __init__(self, input_size, hidden_size, output_size):
-#         super(RNN, self).__init__()
-#         self.rnn = nn.RNN(
-#             input_size=input_size,
-#             hidden_size=hidden_size,  # RNN隐藏神经元个数
-#             num_layers=1,  # RNN隐藏层个数
-#         )
-#         self.out = nn.Linear(hidden_size, output_size)
-#         self.softmax = nn.LogSoftmax(dim=1)
-
-#     def forward(self, x, h):
-#         # x (time_step, batch_size, input_size)
-#         # h (n_layers, batch, hidden_size)
-#         # out (time_step, batch_size, hidden_size)
-#         out, h = self.rnn(x, h)
-#         prediction = self.softmax(self.out(out))
-#         return prediction, h
-
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(RNN, self).__init__()
-
-        self.hidden_size = hidden_size
-
-        self.u = nn.Linear(input_size, hidden_size)
-        self.w = nn.Linear(hidden_size, hidden_size)
-        self.v = nn.Linear(hidden_size, output_size)
-
-        self.tanh = nn.Tanh()
+        self.rnn = nn.RNN(
+            input_size=input_size,
+            hidden_size=hidden_size,  # RNN隐藏神经元个数
+            num_layers=1,  # RNN隐藏层个数
+            # batch_first=True,
+        )
+        self.out = nn.Linear(hidden_size, output_size)
         self.softmax = nn.LogSoftmax(dim=1)
 
-    def forward(self, inputs, hidden):
+    def forward(self, x, h):
+        # x (time_step, batch_size, input_size)
+        # h (n_layers, batch, hidden_size)
+        # out (time_step, batch_size, hidden_size)
+        out, h = self.rnn(x, h)
+        prediction = self.softmax(self.out(out))
+        return prediction, h
 
-        u_x = self.u(inputs)
+# class RNN(nn.Module):
+#     def __init__(self, input_size, hidden_size, output_size):
+#         super(RNN, self).__init__()
 
-        hidden = self.w(hidden)
-        hidden = self.tanh(hidden + u_x)
+#         self.hidden_size = hidden_size
 
-        output = self.softmax(self.v(hidden))
+#         self.u = nn.Linear(input_size, hidden_size)
+#         self.w = nn.Linear(hidden_size, hidden_size)
+#         self.v = nn.Linear(hidden_size, output_size)
 
-        return output, hidden
+#         self.tanh = nn.Tanh()
+#         self.softmax = nn.LogSoftmax(dim=1)
+
+#     def forward(self, inputs, hidden):
+
+#         u_x = self.u(inputs)
+
+#         hidden = self.w(hidden)
+#         hidden = self.tanh(hidden + u_x)
+
+#         output = self.softmax(self.v(hidden))
+
+#         return output, hidden
 
 def dataloader_init(init_data_path, squeue_data_path, label_path):
     print("initializing dataset ... ", end="")
@@ -99,10 +100,6 @@ def dataloader_init(init_data_path, squeue_data_path, label_path):
     return train_dataloader, val_dataloader
 
 def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic):
-    # all_losses = []
-    # all_top1 = []
-    # mean_loss = []
-    # mean_top1 = []
 
     pbar = tqdm(
         train_dataloader,
@@ -110,23 +107,20 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
         ncols=130
     )
     for batch_index, (h_state, inputs, target) in enumerate(pbar):
-    # for man_id in sample_id:
-        # h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
-        # inputs = squeue_data_tensor[id].unsqueeze(1)
-        # target = label_tensor[man_id][-1:].long()
 
-        # for time_id in range(squeue_data_tensor[id].size(0)):
+        # inputs = inputs[0]
+        # h_state = h_state[0]
+        # target = target[0]
+        # for i in range(inputs.size()[0]):
+        #     output, h_state = rnn_net(inputs[i], h_state)
+
         inputs = inputs[0]
-        h_state = h_state[0]
         target = target[0]
+        output, h_state = rnn_net(inputs, h_state)
+        output = output[-1]
 
-        for i in range(inputs.size()[0]):
-            output, h_state = rnn_net(inputs[i], h_state)
-        # output = prediction[-1, :]
         loss = criterion(output, target)
         top1 = accuracy(output.data, target.data, topk=(1,))
-        # print(loss, end="")
-        # print(top1)
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -162,6 +156,8 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
 def valuate(rnn_net, val_dataloader, epoch):
     all_top1 = []
     mean_top1 = []
+    y_true = []
+    y_pred = []
 
     pbar = tqdm(
         val_dataloader,
@@ -169,25 +165,29 @@ def valuate(rnn_net, val_dataloader, epoch):
         ncols=130
     )
     for batch_index, (h_state, inputs, target) in enumerate(pbar):
-        inputs = inputs[0]
-        h_state = h_state[0]
-        target = target[0]
-
-        for i in range(inputs.size()[0]):
-            output, h_state = rnn_net(inputs[i], h_state)
-        top1 = accuracy(output.data, target.data, topk=(1,))
         
+        # inputs = inputs[0]
+        # h_state = h_state[0]
+        # target = target[0]
+        # for i in range(inputs.size()[0]):
+        #     output, h_state = rnn_net(inputs[i], h_state)
+
+        inputs = inputs[0]
+        target = target[0]
+        output, h_state = rnn_net(inputs, h_state)
+        output = output[-1]
+
+        top1 = accuracy(output.data, target.data, topk=(1,))
         all_top1.append(top1)
         mean_top1.append(np.mean(all_top1))
-        # fig_prec = plt.figure('valuate_fig_prec')
-        # plt.ion()
-        # plt.plot(mean_top1)
-        # plt.draw()
-        # plt.pause(0.1)
 
         pbar.set_postfix_str(
             ", top1: {:0.1f}%".format(mean_top1[-1])
         )
+
+        y_true.append(target.item())
+        y_pred.append(output.topk(1, 1, True, True)[1].item())
+    return y_true, y_pred
 
 if __name__ == "__main__":
 
@@ -204,8 +204,8 @@ if __name__ == "__main__":
     # criterion = nn.NLLLoss()
     criterion = nn.CrossEntropyLoss()
 
-    optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
-    # optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
+    # optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
+    optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
     print(" done")
 
     statistic_dic = {"all_losses": [], "mean_loss": [], "all_top1": [], "mean_top1": []}
@@ -213,5 +213,5 @@ if __name__ == "__main__":
         train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
         valuate(rnn_net, val_dataloader, epoch)
         print()
-        
+
     plt.show()

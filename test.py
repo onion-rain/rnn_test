@@ -8,6 +8,7 @@ import numpy as np
 from misc import accuracy
 
 from train import dataloader_init, valuate, RNN
+from misc import cal_score
 
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
@@ -16,19 +17,16 @@ n_input = 66
 n_hidden = 128
 n_output = 2
 
-# checkpoint_path = "sgd_rnn_state_dict.pkl"
-checkpoint_path = "adam_rnn_state_dict.pkl"
+checkpoint_path = "sgd_rnn_state_dict.pkl"
+# checkpoint_path = "adam_rnn_state_dict.pkl"
 
 # set_seed(1)  # 设置随机种子
 
 def load_csv(path):
     with open(path, "r") as f:
         reader = csv.reader(f)
-        # print(type(reader))
 
         result = list(reader)
-        # for row in reader:
-        #     print(row)
         return result
 
 if __name__ == "__main__":
@@ -41,8 +39,10 @@ if __name__ == "__main__":
     rnn_net.load_state_dict(torch.load(checkpoint_path))
     # rnn_net.to(device)
     print(" done")
-    
 
-    valuate(rnn_net, val_dataloader, 0)
-        
-    plt.show()
+    y_true, y_pred = valuate(rnn_net, val_dataloader, 0)
+    # y_true = [1,0,1]
+    # y_pred = [0,1,1]
+    score = cal_score(y_true, y_pred)
+
+    print()

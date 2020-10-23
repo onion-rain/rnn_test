@@ -1,18 +1,21 @@
-# from sklearn.metrics import precision_score, recall_score
+from sklearn.metrics import precision_score, recall_score
 from torch.utils.data import Dataset
 import csv
 import torch
 
-# y_true = [1,0,1]
-# y_pred=[0,1,1]
 
-# def cal_score(y_true, y_pred):
-#     precision = precision_score(y_true, y_pred)
-#     recall = recall_score(y_true, y_pred)
-#     score = (precision * recall) / (0.4 * precision + 0.6 * recall)
+def cal_score(y_true, y_pred):
+    """
+    args:
+        y_true = [1,0,1]
+        y_pred = [0,1,1]
+    """
+    precision = precision_score(y_true, y_pred)
+    recall = recall_score(y_true, y_pred)
+    score = (precision * recall) / (0.4 * precision + 0.6 * recall)
 
-#     print(score)
-#     return score
+    print(score)
+    return score
 
 
 def accuracy(output, target, topk=(1,)):
