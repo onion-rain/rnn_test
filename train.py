@@ -1,11 +1,11 @@
-import csv
 import torch
 from torch import nn
 import random
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from misc import accuracy, cal_score
+from misc import accuracy, csvDataset
+from tqdm import tqdm
 
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
@@ -13,15 +13,6 @@ label_path = "data\MoopLab\y_train.csv"
 
 # set_seed(1)  # 设置随机种子
 
-def load_csv(path):
-    with open(path, "r") as f:
-        reader = csv.reader(f)
-        # print(type(reader))
-
-        result = list(reader)
-        # for row in reader:
-        #     print(row)
-        return result
 
 # class INIT(nn.Module):
 #     def __init__(self, input, hidden, output):
@@ -80,36 +71,56 @@ class RNN(nn.Module):
 
 
 if __name__ == "__main__":
-    init_data = load_csv(init_data_path)[1:]
-    squeue_data = load_csv(squeue_data_path)[1:]
-    label = load_csv(label_path)[1:]
+    # init_data = load_csv(init_data_path)[1:]
+    # squeue_data = load_csv(squeue_data_path)[1:]
+    # label = load_csv(label_path)[1:]
 
-    # init data
-    init_data_tensor = []
-    init_data_num = []
-    init_data_cat = []
-    for id in range(len(init_data)):
-        init_data_tensor.append(torch.Tensor(list(map(float, init_data[id][1:]))))
-        init_data_num.append(list(map(float, init_data[id][1:6])))
-        init_data_cat.append(list(map(int,   init_data[id][6:])))
+    # # init data
+    # init_data_tensor = []
+    # init_data_num = []
+    # init_data_cat = []
+    # for id in range(len(init_data)):
+    #     init_data_tensor.append(torch.Tensor(list(map(float, init_data[id][1:]))))
+    #     init_data_num.append(list(map(float, init_data[id][1:6])))
+    #     init_data_cat.append(list(map(int,   init_data[id][6:])))
 
-    # squeue data
-    squeue_data_float = []
-    for id in range(len(squeue_data)):
-        squeue_data_float.append(list(map(float, squeue_data[id])))
-    data_num = int(max([squeue_data_float[i][0] for i in range(len(squeue_data_float))])) + 1
-    squeue_data = [[] for _ in range(data_num)]
-    for line in range(len(squeue_data_float)):
-        squeue_data[int(squeue_data_float[line][0])].append(squeue_data_float[line][2:])
-    squeue_data_tensor = []
-    for l in squeue_data:
-        squeue_data_tensor.append(torch.Tensor(l))
+    # # squeue data
+    # squeue_data_float = []
+    # for id in range(len(squeue_data)):
+    #     squeue_data_float.append(list(map(float, squeue_data[id])))
+    # data_num = int(max([squeue_data_float[i][0] for i in range(len(squeue_data_float))])) + 1
+    # squeue_data = [[] for _ in range(data_num)]
+    # for line in range(len(squeue_data_float)):
+    #     squeue_data[int(squeue_data_float[line][0])].append(squeue_data_float[line][2:])
+    # squeue_data_tensor = []
+    # for l in squeue_data:
+    #     squeue_data_tensor.append(torch.Tensor(l))
 
-    # label
-    # label_tensor = label
-    for id in range(len(label)):
-        label[id] = list(map(int, label[id]))[-1:]
-    label_tensor = torch.Tensor(label)
+    # # label
+    # # label_tensor = label
+    # for id in range(len(label)):
+    #     label[id] = list(map(int, label[id]))[-1:]
+    # label_tensor = torch.Tensor(label)
+
+    train_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=True)
+    val_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=False)
+    train_dataloader = torch.utils.data.DataLoader(
+        dataset=train_dataset,
+        batch_size=1,
+        shuffle=True,
+        num_workers=0,
+        pin_memory=True,
+        # collate_fn=train_dataset.collate_fn,
+        drop_last=True,
+    )
+    val_dataloader = torch.utils.data.DataLoader(
+        dataset=val_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=0,
+        # collate_fn=val_dataset.collate_fn,
+        drop_last=True,
+    )
 
     n_input = 66
     n_hidden = 128
@@ -131,27 +142,38 @@ if __name__ == "__main__":
     # criterion = nn.NLLLoss()
     criterion = nn.CrossEntropyLoss()
 
-    sample_id = l = list(range(data_num))
+    # sample_id = list(range(data_num))
     
     all_losses = []
     all_prec1 = []
     mean_loss = []
     mean_prec1 = []
 
-    for step in range(N_EPOCHS):
-        random.shuffle(sample_id)
-        for man_id in sample_id:
-            h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
-            input = squeue_data_tensor[id].unsqueeze(1)
+    for epoch in range(N_EPOCHS):
+        # random.shuffle(sample_id)
+        pbar = tqdm(
+            train_dataloader,
+            desc="Train {:4}".format(epoch),
+            ncols=130
+        )
+        for batch_index, (h_state, inputs, target) in enumerate(pbar):
+        # for man_id in sample_id:
+            # h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
+            # inputs = squeue_data_tensor[id].unsqueeze(1)
+            # target = label_tensor[man_id][-1:].long()
+
             # for time_id in range(squeue_data_tensor[id].size(0)):
-            for i in range(input.size()[0]):
-                output, h_state = rnn_net(input[i], h_state)
+            inputs = inputs[0]
+            h_state = h_state[0]
+            target = target[0]
+
+            for i in range(inputs.size()[0]):
+                output, h_state = rnn_net(inputs[i], h_state)
             # output = prediction[-1, :]
-            target = label_tensor[man_id][-1:].long()
             loss = criterion(output, target)
             prec1 = accuracy(output.data, target.data, topk=(1,))
-            print(loss, end="")
-            print(prec1)
+            # print(loss, end="")
+            # print(prec1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
@@ -174,6 +196,12 @@ if __name__ == "__main__":
                 plt.plot(mean_prec1)
                 plt.draw()
                 plt.pause(0.1)
+
+                pbar.set_postfix_str(
+                    ", loss: {:.3f}".format(mean_loss[-1])+
+                    ", top1: {:0.1f}%".format(mean_prec1[-1])+
+                    ", lr: {:0.1e}".format(optimizer.param_groups[0]['lr'])
+                )
 
         torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "rnn_state_dict.pkl"))
     
