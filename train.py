@@ -10,6 +10,12 @@ from tqdm import tqdm
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
 label_path = "data\MoopLab\y_train.csv"
+n_input = 66
+n_hidden = 128
+n_output = 2
+N_EPOCHS = 2
+INIT_LR = 1e-6
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # set_seed(1)  # 设置随机种子
 
@@ -68,40 +74,8 @@ class RNN(nn.Module):
 
         return output, hidden
 
-
-
-if __name__ == "__main__":
-    # init_data = load_csv(init_data_path)[1:]
-    # squeue_data = load_csv(squeue_data_path)[1:]
-    # label = load_csv(label_path)[1:]
-
-    # # init data
-    # init_data_tensor = []
-    # init_data_num = []
-    # init_data_cat = []
-    # for id in range(len(init_data)):
-    #     init_data_tensor.append(torch.Tensor(list(map(float, init_data[id][1:]))))
-    #     init_data_num.append(list(map(float, init_data[id][1:6])))
-    #     init_data_cat.append(list(map(int,   init_data[id][6:])))
-
-    # # squeue data
-    # squeue_data_float = []
-    # for id in range(len(squeue_data)):
-    #     squeue_data_float.append(list(map(float, squeue_data[id])))
-    # data_num = int(max([squeue_data_float[i][0] for i in range(len(squeue_data_float))])) + 1
-    # squeue_data = [[] for _ in range(data_num)]
-    # for line in range(len(squeue_data_float)):
-    #     squeue_data[int(squeue_data_float[line][0])].append(squeue_data_float[line][2:])
-    # squeue_data_tensor = []
-    # for l in squeue_data:
-    #     squeue_data_tensor.append(torch.Tensor(l))
-
-    # # label
-    # # label_tensor = label
-    # for id in range(len(label)):
-    #     label[id] = list(map(int, label[id]))[-1:]
-    # label_tensor = torch.Tensor(label)
-
+def dataloader_init(init_data_path, squeue_data_path, label_path):
+    print("initializing dataset ... ", end="")
     train_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=True)
     val_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=False)
     train_dataloader = torch.utils.data.DataLoader(
@@ -121,88 +95,123 @@ if __name__ == "__main__":
         # collate_fn=val_dataset.collate_fn,
         drop_last=True,
     )
+    print(" done")
+    return train_dataloader, val_dataloader
 
-    n_input = 66
-    n_hidden = 128
-    n_output = 2
-    N_EPOCHS = 100
-    INIT_LR = 1e-6
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic):
+    # all_losses = []
+    # all_top1 = []
+    # mean_loss = []
+    # mean_top1 = []
+
+    pbar = tqdm(
+        train_dataloader,
+        desc="Train   {:3}".format(epoch),
+        ncols=130
+    )
+    for batch_index, (h_state, inputs, target) in enumerate(pbar):
+    # for man_id in sample_id:
+        # h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
+        # inputs = squeue_data_tensor[id].unsqueeze(1)
+        # target = label_tensor[man_id][-1:].long()
+
+        # for time_id in range(squeue_data_tensor[id].size(0)):
+        inputs = inputs[0]
+        h_state = h_state[0]
+        target = target[0]
+
+        for i in range(inputs.size()[0]):
+            output, h_state = rnn_net(inputs[i], h_state)
+        # output = prediction[-1, :]
+        loss = criterion(output, target)
+        top1 = accuracy(output.data, target.data, topk=(1,))
+        # print(loss, end="")
+        # print(top1)
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+        
+        if len(statistic_dic["all_losses"]) < 1000:
+            statistic_dic["all_losses"].append(loss.data)
+            statistic_dic["all_top1"].append(top1)
+        else:
+            statistic_dic["mean_loss"].append(np.mean(statistic_dic["all_losses"]))
+            statistic_dic["all_losses"] = []
+            fig_loss = plt.figure('train_fig_loss')
+            plt.ion()
+            plt.plot(statistic_dic["mean_loss"])
+            plt.draw()
+            plt.pause(0.1)
+
+            statistic_dic["mean_top1"].append(np.mean(statistic_dic["all_top1"]))
+            statistic_dic["all_top1"] = []
+            fig_top1 = plt.figure('train_fig_top1')
+            plt.ion()
+            plt.plot(statistic_dic["mean_top1"])
+            plt.draw()
+            plt.pause(0.1)
+
+            pbar.set_postfix_str(
+                ", loss: {:.3f}".format(statistic_dic["mean_loss"][-1])+
+                ", top1: {:0.1f}%".format(statistic_dic["mean_top1"][-1])+
+                ", lr: {:0.1e}".format(optimizer.param_groups[0]['lr'])
+            )
+
+    torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "rnn_state_dict.pkl"))
+
+def valuate(rnn_net, val_dataloader, epoch):
+    all_top1 = []
+    mean_top1 = []
+
+    pbar = tqdm(
+        val_dataloader,
+        desc="Valuate {:3}".format(epoch),
+        ncols=130
+    )
+    for batch_index, (h_state, inputs, target) in enumerate(pbar):
+        inputs = inputs[0]
+        h_state = h_state[0]
+        target = target[0]
+
+        for i in range(inputs.size()[0]):
+            output, h_state = rnn_net(inputs[i], h_state)
+        top1 = accuracy(output.data, target.data, topk=(1,))
+        
+        all_top1.append(top1)
+        mean_top1.append(np.mean(all_top1))
+        # fig_prec = plt.figure('valuate_fig_prec')
+        # plt.ion()
+        # plt.plot(mean_top1)
+        # plt.draw()
+        # plt.pause(0.1)
+
+        pbar.set_postfix_str(
+            ", top1: {:0.1f}%".format(mean_top1[-1])
+        )
+
+if __name__ == "__main__":
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # device = torch.device("cpu")
+    train_dataloader, val_dataloader = dataloader_init(init_data_path, squeue_data_path, label_path)
 
+    print("initializing model ... ", end="")
     # init_net = INIT()
     rnn_net = RNN(n_input, n_hidden, n_output)
     # rnn_net.to(device)
 
-    # optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
-    optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
     # criterion = nn.MSELoss()
     # criterion = nn.NLLLoss()
     criterion = nn.CrossEntropyLoss()
 
-    # sample_id = list(range(data_num))
-    
-    all_losses = []
-    all_prec1 = []
-    mean_loss = []
-    mean_prec1 = []
+    optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
+    # optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
+    print(" done")
 
+    statistic_dic = {"all_losses": [], "mean_loss": [], "all_top1": [], "mean_top1": []}
     for epoch in range(N_EPOCHS):
-        # random.shuffle(sample_id)
-        pbar = tqdm(
-            train_dataloader,
-            desc="Train {:4}".format(epoch),
-            ncols=130
-        )
-        for batch_index, (h_state, inputs, target) in enumerate(pbar):
-        # for man_id in sample_id:
-            # h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
-            # inputs = squeue_data_tensor[id].unsqueeze(1)
-            # target = label_tensor[man_id][-1:].long()
-
-            # for time_id in range(squeue_data_tensor[id].size(0)):
-            inputs = inputs[0]
-            h_state = h_state[0]
-            target = target[0]
-
-            for i in range(inputs.size()[0]):
-                output, h_state = rnn_net(inputs[i], h_state)
-            # output = prediction[-1, :]
-            loss = criterion(output, target)
-            prec1 = accuracy(output.data, target.data, topk=(1,))
-            # print(loss, end="")
-            # print(prec1)
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step()
-            
-            if len(all_losses) < 1000:
-                all_losses.append(loss.data)
-                all_prec1.append(prec1)
-            else:
-                mean_loss.append(np.mean(all_losses))
-                mean_prec1.append(np.mean(all_prec1))
-                all_losses = []
-                all_prec1 = []
-                fig_loss = plt.figure('train_fig_loss')
-                plt.ion()
-                plt.plot(mean_loss)
-                plt.draw()
-                plt.pause(0.1)
-                fig_prec = plt.figure('train_fig_prec')
-                plt.ion()
-                plt.plot(mean_prec1)
-                plt.draw()
-                plt.pause(0.1)
-
-                pbar.set_postfix_str(
-                    ", loss: {:.3f}".format(mean_loss[-1])+
-                    ", top1: {:0.1f}%".format(mean_prec1[-1])+
-                    ", lr: {:0.1e}".format(optimizer.param_groups[0]['lr'])
-                )
-
-        torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "rnn_state_dict.pkl"))
-    
+        train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
+        valuate(rnn_net, val_dataloader, epoch)
+        print()
+        
     plt.show()
