@@ -5,6 +5,7 @@ import random
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+from misc import accuracy, cal_score
 
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
@@ -124,7 +125,8 @@ if __name__ == "__main__":
     rnn_net = RNN(n_input, n_hidden, n_output)
     # rnn_net.to(device)
 
-    optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
+    # optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
+    optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
     # criterion = nn.MSELoss()
     # criterion = nn.NLLLoss()
     criterion = nn.CrossEntropyLoss()
@@ -132,7 +134,9 @@ if __name__ == "__main__":
     sample_id = l = list(range(data_num))
     
     all_losses = []
+    all_prec1 = []
     mean_loss = []
+    mean_prec1 = []
 
     for step in range(N_EPOCHS):
         random.shuffle(sample_id)
@@ -145,21 +149,32 @@ if __name__ == "__main__":
             # output = prediction[-1, :]
             target = label_tensor[man_id][-1:].long()
             loss = criterion(output, target)
-            print(loss)
+            prec1 = accuracy(output.data, target.data, topk=(1,))
+            print(loss, end="")
+            print(prec1)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
             
             if len(all_losses) < 1000:
                 all_losses.append(loss.data)
+                all_prec1.append(prec1)
             else:
                 mean_loss.append(np.mean(all_losses))
+                mean_prec1.append(np.mean(all_prec1))
                 all_losses = []
-                fig_loss = plt.figure('fig_loss')
+                all_prec1 = []
+                fig_loss = plt.figure('train_fig_loss')
                 plt.ion()
                 plt.plot(mean_loss)
+                plt.draw()
+                plt.pause(0.1)
+                fig_prec = plt.figure('train_fig_prec')
+                plt.ion()
+                plt.plot(mean_prec1)
                 plt.draw()
                 plt.pause(0.1)
 
         torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "rnn_state_dict.pkl"))
     
+    plt.show()

@@ -1,48 +1,128 @@
+import csv
 import torch
+from torch import nn
+import random
+import os
+import matplotlib.pyplot as plt
 import numpy as np
+from misc import accuracy
 
-batch_size = 2
-max_length = 3
-hidden_size = 2
-num_layers = 1
-# 这个RNN由两个全连接层组成，对应的两个hidden_state的维度是2，输入向量维度是1
-rnn = torch.nn.RNN(1, hidden_size, num_layers, batch_first=True)
+init_data_path = "data/MoopLab/data_b_train.csv"
+squeue_data_path = "data\MoopLab\data_m_train.csv"
+label_path = "data\MoopLab\y_train.csv"
 
+# set_seed(1)  # 设置随机种子
 
-x = torch.FloatTensor([[1, 0, 0], [1, 2, 3]]).resize_(2, 3, 1)
-# x = Variable(x)  # [batch, seq, feature], [2, 3, 1]
-seq_lengths = np.array([1, 3])  # list of integers holding information about the batch size at each sequence step
-print(x)
+def load_csv(path):
+    with open(path, "r") as f:
+        reader = csv.reader(f)
+        # print(type(reader))
 
-
-# 对seq_len进行排序
-order_idx = np.argsort(seq_lengths)[::-1]
-print('order_idx:', str(order_idx))
-order_x = x[order_idx.tolist()]
-order_seq = seq_lengths[order_idx]
-print(order_x)
+        result = list(reader)
+        # for row in reader:
+        #     print(row)
+        return result
 
 
-# 经过以上处理后，长序列的样本调整到短序列样本之前了
-# pack it
-pack = torch.nn.utils.rnn.pack_padded_sequence(order_x, order_seq, batch_first=True)
-print(pack)
+class RNN(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(RNN, self).__init__()
+
+        self.hidden_size = hidden_size
+
+        self.u = nn.Linear(input_size, hidden_size)
+        self.w = nn.Linear(hidden_size, hidden_size)
+        self.v = nn.Linear(hidden_size, output_size)
+
+        self.tanh = nn.Tanh()
+        self.softmax = nn.LogSoftmax(dim=1)
+
+    def forward(self, inputs, hidden):
+
+        u_x = self.u(inputs)
+
+        hidden = self.w(hidden)
+        hidden = self.tanh(hidden + u_x)
+
+        output = self.softmax(self.v(hidden))
+
+        return output, hidden
 
 
-# initialize
-h0 = torch.randn(num_layers, batch_size, hidden_size)
-# forward
-out, _ = rnn(pack, h0)
-print(out)
 
+if __name__ == "__main__":
+    init_data = load_csv(init_data_path)[1:]
+    squeue_data = load_csv(squeue_data_path)[1:]
+    label = load_csv(label_path)[1:]
 
-# unpack
-unpacked = pad_packed_sequence(out)
-out, bz = unpacked[0], unpacked[1]
-print(out, bz)
+    # init data
+    init_data_tensor = []
+    init_data_num = []
+    init_data_cat = []
+    for id in range(len(init_data)):
+        init_data_tensor.append(torch.Tensor(list(map(float, init_data[id][1:]))))
+        init_data_num.append(list(map(float, init_data[id][1:6])))
+        init_data_cat.append(list(map(int,   init_data[id][6:])))
 
+    # squeue data
+    squeue_data_float = []
+    for id in range(len(squeue_data)):
+        squeue_data_float.append(list(map(float, squeue_data[id])))
+    data_num = int(max([squeue_data_float[i][0] for i in range(len(squeue_data_float))])) + 1
+    squeue_data = [[] for _ in range(data_num)]
+    for line in range(len(squeue_data_float)):
+        squeue_data[int(squeue_data_float[line][0])].append(squeue_data_float[line][2:])
+    squeue_data_tensor = []
+    for l in squeue_data:
+        squeue_data_tensor.append(torch.Tensor(l))
 
-# seq_len x batch_size x hidden_size --> batch_size x seq_len x hidden_size
-out = out.permute((1, 0, 2))
-print("output", out)
-print("input", order_x)
+    # label
+    # label_tensor = label
+    for id in range(len(label)):
+        label[id] = list(map(int, label[id]))[-1:]
+    label_tensor = torch.Tensor(label)
+
+    n_input = 66
+    n_hidden = 128
+    n_output = 2
+    N_EPOCHS = 100
+    INIT_LR = 1e-6
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+    # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    # device = torch.device("cpu")
+
+    # init_net = INIT()
+    rnn_net = RNN(n_input, n_hidden, n_output)
+    rnn_net.load_state_dict(torch.load("adam_rnn_state_dict.pkl"))
+    # rnn_net.to(device)
+
+    sample_id = l = list(range(data_num))
+    
+    all_losses = []
+    all_prec1 = []
+    mean_loss = []
+    mean_prec1 = []
+
+    random.shuffle(sample_id)
+    for man_id in sample_id:
+        h_state = torch.cat((init_data_tensor[man_id], torch.zeros(110)), 0).unsqueeze(0)
+        input = squeue_data_tensor[id].unsqueeze(1)
+        # for time_id in range(squeue_data_tensor[id].size(0)):
+        for i in range(input.size()[0]):
+            output, h_state = rnn_net(input[i], h_state)
+        # output = prediction[-1, :]
+        target = label_tensor[man_id][-1:].long()
+        prec1 = accuracy(output.data, target.data, topk=(1,))
+        # print(loss, end="")
+        print(prec1)
+        
+        mean_prec1.append(np.mean(all_prec1))
+        all_prec1 = []
+        fig_prec = plt.figure('test_fig_prec')
+        plt.ion()
+        plt.plot(mean_prec1)
+        plt.draw()
+        plt.pause(0.1)
+
+    plt.show()
