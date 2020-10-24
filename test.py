@@ -17,8 +17,8 @@ n_input = 66
 n_hidden = 128
 n_output = 2
 
-checkpoint_path = "rnn_state_dict.pkl"
-# checkpoint_path = "sgd_rnn_state_dict.pkl"
+# checkpoint_path = "rnn_state_dict.pkl"
+checkpoint_path = "sgd_rnn_state_dict.pkl"
 # checkpoint_path = "adam_rnn_state_dict.pkl"
 
 # set_seed(1)  # 设置随机种子

@@ -13,7 +13,7 @@ label_path = "data\MoopLab\y_train.csv"
 n_input = 66
 n_hidden = 128
 n_output = 2
-N_EPOCHS = 2
+N_EPOCHS = 10
 INIT_LR = 1e-6
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -32,19 +32,18 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #         return out
 
 class LSTM(nn.Module):
-    def __init__(self):
-        super(RNN, self).__init__()
+    def __init__(self, input_size, hidden_size, output_size):
+        super(LSTM, self).__init__()
 
         self.rnn = nn.LSTM(         # if use nn.RNN(), it hardly learns
-            input_size=INPUT_SIZE,
-            hidden_size=64,         # rnn hidden unit
+            input_size=input_size,
+            hidden_size=hidden_size,         # rnn hidden unit
             num_layers=1,           # number of rnn layer
             batch_first=False,      # input & output will has batch size as 1s dimension. e.g. (batch, time_step, input_size)
         )
+        self.out = nn.Linear(hidden_size, output_size)
 
-        self.out = nn.Linear(64, 10)
-
-    def forward(self, x):
+    def forward(self, x, h):
         # x shape (time_step, batch, input_size)
         # r_out shape (time_step, batch, output_size)
         # h_n shape (n_layers, batch, hidden_size)
@@ -52,8 +51,8 @@ class LSTM(nn.Module):
         r_out, (h_n, h_c) = self.rnn(x, None)   # None represents zero initial hidden state
 
         # choose r_out at the last time step
-        out = self.out(r_out[:, -1, :])
-        return out
+        prediction = self.out(r_out[-1, :, :])
+        return prediction
 
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -71,7 +70,7 @@ class RNN(nn.Module):
         # out (time_step, batch_size, hidden_size)
         out, h = self.rnn(x, h)
         prediction = self.out(out[-1, :, :])
-        return prediction, h
+        return prediction
 
 
 def dataloader_init(init_data_path, squeue_data_path, label_path):
@@ -107,7 +106,7 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
 
         inputs = inputs[0]
         target = target[0]
-        output, h_state = rnn_net(inputs, h_state)
+        output = rnn_net(inputs, h_state)
 
         loss = criterion(output, target)
         top1 = accuracy(output.data, target.data, topk=(1,))
@@ -141,7 +140,7 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
                 ", lr: {:0.1e}".format(optimizer.param_groups[0]['lr'])
             )
 
-    torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "rnn_state_dict.pkl"))
+    torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "{}_rnn_state_dict.pkl".format(epoch)))
 
 def valuate(rnn_net, val_dataloader, epoch):
     all_top1 = []
@@ -158,7 +157,7 @@ def valuate(rnn_net, val_dataloader, epoch):
         
         inputs = inputs[0]
         target = target[0]
-        output, h_state = rnn_net(inputs, h_state)
+        output = rnn_net(inputs, h_state)
 
         top1 = accuracy(output.data, target.data, topk=(1,))
         all_top1.append(top1)
@@ -180,7 +179,8 @@ if __name__ == "__main__":
 
     print("initializing model ... ", end="")
     # init_net = INIT()
-    rnn_net = RNN(n_input, n_hidden, n_output)
+    # rnn_net = RNN(n_input, n_hidden, n_output)
+    rnn_net = LSTM(n_input, n_hidden, n_output)
     # rnn_net.to(device)
 
     # criterion = nn.MSELoss()
