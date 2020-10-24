@@ -31,6 +31,30 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 #         out = self.linear2(out)
 #         return out
 
+class LSTM(nn.Module):
+    def __init__(self):
+        super(RNN, self).__init__()
+
+        self.rnn = nn.LSTM(         # if use nn.RNN(), it hardly learns
+            input_size=INPUT_SIZE,
+            hidden_size=64,         # rnn hidden unit
+            num_layers=1,           # number of rnn layer
+            batch_first=False,      # input & output will has batch size as 1s dimension. e.g. (batch, time_step, input_size)
+        )
+
+        self.out = nn.Linear(64, 10)
+
+    def forward(self, x):
+        # x shape (time_step, batch, input_size)
+        # r_out shape (time_step, batch, output_size)
+        # h_n shape (n_layers, batch, hidden_size)
+        # h_c shape (n_layers, batch, hidden_size)
+        r_out, (h_n, h_c) = self.rnn(x, None)   # None represents zero initial hidden state
+
+        # choose r_out at the last time step
+        out = self.out(r_out[:, -1, :])
+        return out
+
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(RNN, self).__init__()
@@ -38,42 +62,17 @@ class RNN(nn.Module):
             input_size=input_size,
             hidden_size=hidden_size,  # RNN隐藏神经元个数
             num_layers=1,  # RNN隐藏层个数
-            # batch_first=True,
         )
         self.out = nn.Linear(hidden_size, output_size)
-        self.softmax = nn.LogSoftmax(dim=1)
 
     def forward(self, x, h):
         # x (time_step, batch_size, input_size)
         # h (n_layers, batch, hidden_size)
         # out (time_step, batch_size, hidden_size)
         out, h = self.rnn(x, h)
-        prediction = self.softmax(self.out(out))
+        prediction = self.out(out[-1, :, :])
         return prediction, h
 
-# class RNN(nn.Module):
-#     def __init__(self, input_size, hidden_size, output_size):
-#         super(RNN, self).__init__()
-
-#         self.hidden_size = hidden_size
-
-#         self.u = nn.Linear(input_size, hidden_size)
-#         self.w = nn.Linear(hidden_size, hidden_size)
-#         self.v = nn.Linear(hidden_size, output_size)
-
-#         self.tanh = nn.Tanh()
-#         self.softmax = nn.LogSoftmax(dim=1)
-
-#     def forward(self, inputs, hidden):
-
-#         u_x = self.u(inputs)
-
-#         hidden = self.w(hidden)
-#         hidden = self.tanh(hidden + u_x)
-
-#         output = self.softmax(self.v(hidden))
-
-#         return output, hidden
 
 def dataloader_init(init_data_path, squeue_data_path, label_path):
     print("initializing dataset ... ", end="")
@@ -85,7 +84,6 @@ def dataloader_init(init_data_path, squeue_data_path, label_path):
         shuffle=True,
         num_workers=0,
         pin_memory=True,
-        # collate_fn=train_dataset.collate_fn,
         drop_last=True,
     )
     val_dataloader = torch.utils.data.DataLoader(
@@ -93,7 +91,6 @@ def dataloader_init(init_data_path, squeue_data_path, label_path):
         batch_size=1,
         shuffle=False,
         num_workers=0,
-        # collate_fn=val_dataset.collate_fn,
         drop_last=True,
     )
     print(" done")
@@ -108,16 +105,9 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
     )
     for batch_index, (h_state, inputs, target) in enumerate(pbar):
 
-        # inputs = inputs[0]
-        # h_state = h_state[0]
-        # target = target[0]
-        # for i in range(inputs.size()[0]):
-        #     output, h_state = rnn_net(inputs[i], h_state)
-
         inputs = inputs[0]
         target = target[0]
         output, h_state = rnn_net(inputs, h_state)
-        output = output[-1]
 
         loss = criterion(output, target)
         top1 = accuracy(output.data, target.data, topk=(1,))
@@ -166,16 +156,9 @@ def valuate(rnn_net, val_dataloader, epoch):
     )
     for batch_index, (h_state, inputs, target) in enumerate(pbar):
         
-        # inputs = inputs[0]
-        # h_state = h_state[0]
-        # target = target[0]
-        # for i in range(inputs.size()[0]):
-        #     output, h_state = rnn_net(inputs[i], h_state)
-
         inputs = inputs[0]
         target = target[0]
         output, h_state = rnn_net(inputs, h_state)
-        output = output[-1]
 
         top1 = accuracy(output.data, target.data, topk=(1,))
         all_top1.append(top1)
