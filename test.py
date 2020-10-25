@@ -46,7 +46,7 @@ def test(rnn_net, test_dataloader, epoch):
 
 if __name__ == "__main__":
 
-    test_dataset = csvDataset(init_data_path, squeue_data_path, train=False)
+    test_dataset = csvDataset(init_data_path, squeue_data_path, train=False,train_percent=0)
     test_dataloader = torch.utils.data.DataLoader(
         dataset=test_dataset,
         batch_size=1,
