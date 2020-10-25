@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from misc import accuracy, csvDataset
 from tqdm import tqdm
+from misc import cal_score
 
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
@@ -14,22 +15,10 @@ n_input = 66
 n_hidden = 128
 n_output = 2
 N_EPOCHS = 10
-INIT_LR = 1e-6
+INIT_LR = 1e-4
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # set_seed(1)  # 设置随机种子
-
-
-# class INIT(nn.Module):
-#     def __init__(self, input, hidden, output):
-#         super(INIT, self).__init__()
-#         self.linear1 = nn.Linear(input, hidden)
-#         self.linear2 = nn.Linear(hidden, output)
-
-#     def forward(self, inputs):
-#         out = self.linear1(inputs)
-#         out = self.linear2(out)
-#         return out
 
 class LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
@@ -73,30 +62,40 @@ class RNN(nn.Module):
         return prediction
 
 
-def dataloader_init(init_data_path, squeue_data_path, label_path):
+def dataloader_init(init_data_path, squeue_data_path, label_path, train_percent=0.8):
     print("initializing dataset ... ", end="")
-    train_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=True)
-    val_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=False)
-    train_dataloader = torch.utils.data.DataLoader(
-        dataset=train_dataset,
-        batch_size=1,
-        shuffle=True,
-        num_workers=0,
-        pin_memory=True,
-        drop_last=True,
-    )
-    val_dataloader = torch.utils.data.DataLoader(
-        dataset=val_dataset,
-        batch_size=1,
-        shuffle=False,
-        num_workers=0,
-        drop_last=True,
-    )
+    if train_percent > 0:
+        train_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=True, train_percent=train_percent)
+        train_dataloader = torch.utils.data.DataLoader(
+            dataset=train_dataset,
+            batch_size=1,
+            shuffle=True,
+            num_workers=0,
+            pin_memory=True,
+            drop_last=False,
+        )
+    else:
+        train_dataloader = None
+    
+    if train_percent < 1:
+        val_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=False, train_percent=train_percent)
+        val_dataloader = torch.utils.data.DataLoader(
+            dataset=val_dataset,
+            batch_size=1,
+            shuffle=False,
+            num_workers=0,
+            drop_last=False,
+        )
+    else:
+        val_dataloader = None
+
     print(" done")
     return train_dataloader, val_dataloader
 
+
 def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic):
 
+    # torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "{}_random.pkl".format(epoch)))
     pbar = tqdm(
         train_dataloader,
         desc="Train   {:3}".format(epoch),
@@ -142,6 +141,7 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
 
     torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "{}_rnn_state_dict.pkl".format(epoch)))
 
+
 def valuate(rnn_net, val_dataloader, epoch):
     all_top1 = []
     mean_top1 = []
@@ -171,6 +171,7 @@ def valuate(rnn_net, val_dataloader, epoch):
         y_pred.append(output.topk(1, 1, True, True)[1].item())
     return y_true, y_pred
 
+
 if __name__ == "__main__":
 
     # device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -187,14 +188,18 @@ if __name__ == "__main__":
     # criterion = nn.NLLLoss()
     criterion = nn.CrossEntropyLoss()
 
-    # optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
-    optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
+    optimizer = torch.optim.Adam(rnn_net.parameters(), lr=INIT_LR)
+    # optimizer = torch.optim.SGD(rnn_net.parameters(), lr=INIT_LR)
     print(" done")
 
     statistic_dic = {"all_losses": [], "mean_loss": [], "all_top1": [], "mean_top1": []}
+    y_true, y_pred = valuate(rnn_net, val_dataloader, -1)
+    score = cal_score(y_true, y_pred)
+    torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "randomx.pkl"))
     for epoch in range(N_EPOCHS):
         train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
-        valuate(rnn_net, val_dataloader, epoch)
+        y_true, y_pred = valuate(rnn_net, val_dataloader, epoch)
+        score = cal_score(y_true, y_pred)
         print()
 
     plt.show()

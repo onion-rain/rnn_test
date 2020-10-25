@@ -37,7 +37,7 @@ def accuracy(output, target, topk=(1,)):
 
 
 class csvDataset(Dataset):
-    def __init__(self, init_path, squeue_path, label_path, train=True, train_percent=0.8):
+    def __init__(self, init_path, squeue_path, label_path=None, train=True, train_percent=0.8):
 
         init_data = self.load_csv(init_path)[1:]
 
@@ -50,20 +50,25 @@ class csvDataset(Dataset):
         for line in range(len(squeue_data_float)):
             squeue_data[int(squeue_data_float[line][0])].append(squeue_data_float[line][2:])
 
-        label = self.load_csv(label_path)[1:]
+        assert len(init_data) == len(squeue_data)
 
-        assert len(init_data) == len(squeue_data) == len(label)
+        if label_path is not None:
+            label = self.load_csv(label_path)[1:]
+            assert len(init_data) == len(label)
+
         total_length = len(init_data)
         if train:
             self.length = int(total_length*train_percent)
             init_data = init_data[:self.length]
             squeue_data = squeue_data[:self.length]
-            label = label[:self.length]
+            if label_path is not None:
+                label = label[:self.length]
         else:
             self.length = int(total_length*(1-train_percent))
-            init_data = init_data[self.length:]
-            squeue_data = squeue_data[self.length:]
-            label = label[self.length:]
+            init_data = init_data[total_length-self.length:]
+            squeue_data = squeue_data[total_length-self.length:]
+            if label_path is not None:
+                label = label[total_length-self.length:]
         
         # init data
         init_data_tensor = []
@@ -83,15 +88,21 @@ class csvDataset(Dataset):
 
         # label
         # label_tensor = label
-        for id in range(len(label)):
-            label[id] = list(map(int, label[id]))[-1:]
-        label_tensor = torch.Tensor(label)
-        self.label_tensor = label_tensor
+        if label_path is not None:
+            for id in range(len(label)):
+                label[id] = list(map(int, label[id]))[-1:]
+            label_tensor = torch.Tensor(label)
+            self.label_tensor = label_tensor
+        else:
+            self.label_tensor = None
 
     def __getitem__(self, index):
         inital_h_state = torch.cat((self.init_data_tensor[index], torch.zeros(110)), 0).unsqueeze(0)
         inputs = self.squeue_data_tensor[index].unsqueeze(1)
-        target = self.label_tensor[index][-1:].long()
+        if self.label_tensor is not None:
+            target = self.label_tensor[index][-1:].long()
+        else:
+            target = 0
 
         return inital_h_state, inputs, target
 
