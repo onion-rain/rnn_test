@@ -30,7 +30,7 @@ print(train_data.train_data.size())     # (60000, 28, 28)
 print(train_data.train_labels.size())   # (60000)
 plt.imshow(train_data.train_data[0].numpy(), cmap='gray')
 plt.title('%i' % train_data.train_labels[0])
-plt.show()
+# plt.show()
 
 # Data Loader for easy mini-batch return in training
 train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=BATCH_SIZE, shuffle=True)
@@ -39,7 +39,6 @@ train_loader = torch.utils.data.DataLoader(dataset=train_data, batch_size=BATCH_
 test_data = dsets.MNIST(root='data/mnist/', train=False, transform=transforms.ToTensor())
 test_x = test_data.test_data.type(torch.FloatTensor)[:2000]/255.   # shape (2000, 28, 28) value in range(0,1)
 test_y = test_data.test_labels.numpy()[:2000]    # covert to numpy array
-
 
 class RNN(nn.Module):
     def __init__(self):
@@ -54,7 +53,7 @@ class RNN(nn.Module):
 
         self.out = nn.Linear(64, 10)
 
-    def forward(self, x):
+    def forward(self, x, h):
         # x shape (batch, time_step, input_size)
         # r_out shape (batch, time_step, output_size)
         # h_n shape (n_layers, batch, hidden_size)
@@ -65,8 +64,11 @@ class RNN(nn.Module):
         out = self.out(r_out[:, -1, :])
         return out
 
+# rnn = RNN()
+# print(rnn)
 
-rnn = RNN()
+from train import LSTM
+rnn = LSTM(INPUT_SIZE, 64, 10)
 print(rnn)
 
 optimizer = torch.optim.Adam(rnn.parameters(), lr=LR)   # optimize all cnn parameters
@@ -77,20 +79,20 @@ for epoch in range(EPOCH):
     for step, (b_x, b_y) in enumerate(train_loader):        # gives batch data
         b_x = b_x.view(-1, 28, 28)              # reshape x to (batch, time_step, input_size)
 
-        output = rnn(b_x)                               # rnn output
+        output = rnn(b_x, None)                               # rnn output
         loss = loss_func(output, b_y)                   # cross entropy loss
         optimizer.zero_grad()                           # clear gradients for this training step
         loss.backward()                                 # backpropagation, compute gradients
         optimizer.step()                                # apply gradients
 
         if step % 50 == 0:
-            test_output = rnn(test_x)                   # (samples, time_step, input_size)
+            test_output = rnn(test_x, None)                   # (samples, time_step, input_size)
             pred_y = torch.max(test_output, 1)[1].data.numpy()
             accuracy = float((pred_y == test_y).astype(int).sum()) / float(test_y.size)
             print('Epoch: ', epoch, '| train loss: %.4f' % loss.data.numpy(), '| test accuracy: %.2f' % accuracy)
 
 # print 10 predictions from test data
-test_output = rnn(test_x[:10].view(-1, 28, 28))
+test_output = rnn(test_x[:10].view(-1, 28, 28), None)
 pred_y = torch.max(test_output, 1)[1].data.numpy()
 print(pred_y, 'prediction number')
 print(test_y[:10], 'real number')

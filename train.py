@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from misc import accuracy, csvDataset
 from tqdm import tqdm
-from misc import cal_score
+from misc import cal_score, Collate
+from torch.nn.utils.rnn import pad_sequence, pack_padded_sequence, pad_packed_sequence
 
 init_data_path = "data/MoopLab/data_b_train.csv"
 squeue_data_path = "data\MoopLab\data_m_train.csv"
@@ -20,6 +21,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # set_seed(1)  # 设置随机种子
 
+
 class LSTM(nn.Module):
     def __init__(self, input_size, hidden_size, output_size):
         super(LSTM, self).__init__()
@@ -28,11 +30,11 @@ class LSTM(nn.Module):
             input_size=input_size,
             hidden_size=hidden_size,         # rnn hidden unit
             num_layers=1,           # number of rnn layer
-            batch_first=False,      # input & output will has batch size as 1s dimension. e.g. (batch, time_step, input_size)
+            batch_first=True,      # input & output will has batch size as 1s dimension. e.g. (batch, time_step, input_size)
         )
         self.out = nn.Linear(hidden_size, output_size)
 
-    def forward(self, x, h):
+    def forward(self, x, h, pack=True):
         # x shape (time_step, batch, input_size)
         # r_out shape (time_step, batch, output_size)
         # h_n shape (n_layers, batch, hidden_size)
@@ -40,26 +42,31 @@ class LSTM(nn.Module):
         r_out, (h_n, h_c) = self.rnn(x, None)   # None represents zero initial hidden state
 
         # choose r_out at the last time step
-        prediction = self.out(r_out[-1, :, :])
+        # prediction = self.out(r_out[-1, :, :])
+        if pack:
+            [r_out, seq_lengths] = pad_packed_sequence(r_out, batch_first=True)
+        prediction = self.out(r_out[:, -1, :])
+            # r_out = [r_out[i, :seq_lengths[i], :] for i in range(len(r_out))]
         return prediction
 
-class RNN(nn.Module):
-    def __init__(self, input_size, hidden_size, output_size):
-        super(RNN, self).__init__()
-        self.rnn = nn.RNN(
-            input_size=input_size,
-            hidden_size=hidden_size,  # RNN隐藏神经元个数
-            num_layers=1,  # RNN隐藏层个数
-        )
-        self.out = nn.Linear(hidden_size, output_size)
 
-    def forward(self, x, h):
-        # x (time_step, batch_size, input_size)
-        # h (n_layers, batch, hidden_size)
-        # out (time_step, batch_size, hidden_size)
-        out, h = self.rnn(x, h)
-        prediction = self.out(out[-1, :, :])
-        return prediction
+# class RNN(nn.Module):
+#     def __init__(self, input_size, hidden_size, output_size):
+#         super(RNN, self).__init__()
+#         self.rnn = nn.RNN(
+#             input_size=input_size, 
+#             hidden_size=hidden_size,  # RNN隐藏神经元个数
+#             num_layers=1,  # RNN隐藏层个数
+#         )
+#         self.out = nn.Linear(hidden_size, output_size)
+
+#     def forward(self, x, h):
+#         # x (time_step, batch_size, input_size)
+#         # h (n_layers, batch, hidden_size)
+#         # out (time_step, batch_size, hidden_size)
+#         out, h = self.rnn(x, h)
+#         prediction = self.out(out[-1, :, :])
+#         return prediction
 
 
 def dataloader_init(init_data_path, squeue_data_path, label_path, train_percent=0.8):
@@ -68,11 +75,12 @@ def dataloader_init(init_data_path, squeue_data_path, label_path, train_percent=
         train_dataset = csvDataset(init_data_path, squeue_data_path, label_path, train=True, train_percent=train_percent)
         train_dataloader = torch.utils.data.DataLoader(
             dataset=train_dataset,
-            batch_size=1,
+            batch_size=10,
             shuffle=True,
             num_workers=0,
             pin_memory=True,
             drop_last=False,
+            collate_fn=Collate(),
         )
     else:
         train_dataloader = None
@@ -85,6 +93,7 @@ def dataloader_init(init_data_path, squeue_data_path, label_path, train_percent=
             shuffle=False,
             num_workers=0,
             drop_last=False,
+            collate_fn=Collate(),
         )
     else:
         val_dataloader = None
@@ -103,8 +112,8 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
     )
     for batch_index, (h_state, inputs, target) in enumerate(pbar):
 
-        inputs = inputs[0]
-        target = target[0]
+        # inputs = inputs[0]
+        # target = target[0]
         output = rnn_net(inputs, h_state)
 
         loss = criterion(output, target)
@@ -113,7 +122,7 @@ def train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
         loss.backward()
         optimizer.step()
         
-        if len(statistic_dic["all_losses"]) < 1000:
+        if len(statistic_dic["all_losses"]) < 100:
             statistic_dic["all_losses"].append(loss.data)
             statistic_dic["all_top1"].append(top1)
         else:
@@ -155,8 +164,8 @@ def valuate(rnn_net, val_dataloader, epoch):
     )
     for batch_index, (h_state, inputs, target) in enumerate(pbar):
         
-        inputs = inputs[0]
-        target = target[0]
+        # inputs = inputs[0]
+        # target = target[0]
         output = rnn_net(inputs, h_state)
 
         top1 = accuracy(output.data, target.data, topk=(1,))
@@ -193,9 +202,9 @@ if __name__ == "__main__":
     print(" done")
 
     statistic_dic = {"all_losses": [], "mean_loss": [], "all_top1": [], "mean_top1": []}
-    y_true, y_pred = valuate(rnn_net, val_dataloader, -1)
-    score = cal_score(y_true, y_pred)
-    torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "randomx.pkl"))
+    # y_true, y_pred = valuate(rnn_net, val_dataloader, -1)
+    # score = cal_score(y_true, y_pred)
+    # torch.save(rnn_net.state_dict(), os.path.join(BASE_DIR, "randomx.pkl"))
     for epoch in range(N_EPOCHS):
         train(rnn_net, train_dataloader, criterion, optimizer, epoch, statistic_dic)
         y_true, y_pred = valuate(rnn_net, val_dataloader, epoch)
